@@ -1,4 +1,5 @@
 import re
+import subprocess
 from konlpy.tag import Okt
 from mrjob.job import MRJob
 from mrjob.step import MRStep
@@ -19,10 +20,17 @@ class ReviewPreprocessing(MRJob):
 
         content = content.strip()
         content = re.compile('[가-힣]+').findall(content)
+        proc = subprocess.Popen(['hadoop', 'fs', '-cat', 'project/stop_words.txt'], stdout=subprocess.PIPE)
+        stopwords = proc.stdout.read().decode('utf-8').split()
+
         if content:
             content = ' '.join(content)
             content = ' '.join([word for word, tag in self.okt.pos(content)])
-            yield id, (name, date, content)
+            token = [t for (t, pos) in self.okt.pos(content, stem=True) if
+                     pos in ['Noun', 'Verb', 'Adjective'] and t not in stopwords and len(t) > 1]
+
+            preprocessed_content = ' '.join(token)
+            yield id, (name, date, preprocessed_content)
 
     def reducer_review_preprocess(self, key, values):
         for name, date, content in values:
